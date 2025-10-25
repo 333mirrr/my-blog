@@ -1,25 +1,15 @@
-import sql from "mssql";
-import dotenv from "dotenv";
+import pkg from 'pg';
+const { Pool } = pkg;
+import dotenv from 'dotenv';
 dotenv.config();
 
-const config = {
+const pool = new Pool({
   user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  server: process.env.DB_SERVER,
-  database: process.env.DB_DATABASE,
-  port: parseInt(process.env.DB_PORT),
-  options: {
-    encrypt: false,
-    trustServerCertificate: true
-  }
-};
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASS,
+  port: process.env.DB_PORT,
+  ssl: { rejectUnauthorized: false } // Render için zorunlu
+});
 
-export async function connectDB() {
-  try {
-    const pool = await sql.connect(config);
-    console.log("✅ SQL bağlantısı başarılı");
-    return pool;
-  } catch (err) {
-    console.error("❌ Veritabanı bağlantı hatası:", err);
-  }
-}
+export default pool;
