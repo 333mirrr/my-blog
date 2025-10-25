@@ -1,187 +1,126 @@
 import express from "express";
+import dotenv from "dotenv";
+import pg from "pg";
+import path from "path";
+import { fileURLToPath } from "url";
 import session from "express-session";
-import { connectDB } from "./db/config.js";
-import sql from "mssql";
 
+dotenv.config();
+
+// ---------------------
+// Express & Path
+// ---------------------
 const app = express();
-const port = 5000;
+const PORT = process.env.PORT || 5000;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// 🔹 Statik dosyalar
-app.use(express.static("pages"));
-app.use(express.json());
+// ---------------------
+// PostgreSQL Pool
+// ---------------------
+// Render/Postgres için SSL gereklidir. (require:true, rejectUnauthorized:false)
+const { Pool } = pg;
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { require: true, rejectUnauthorized: false },
+});
+
+// DB bağlantısını test et + tabloyu otomatik kur
+async function initDB() {
+  const client = await pool.connect();
+  try {
+    console.log("✅ PostgreSQL bağlantısı başarılı");
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS posts (
+        id SERIAL PRIMARY KEY,
+        baslik VARCHAR(255) NOT NULL,
+        icerik TEXT NOT NULL,
+        yazar VARCHAR(100) NOT NULL,
+        tarih TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    console.log("✅ posts tablosu hazır (varsa tekrar oluşturulmaz)");
+  } finally {
+    client.release();
+  }
+}
+
+// ---------------------
+// Middleware
+// ---------------------
 app.use(express.urlencoded({ extended: true }));
-
-// 🔹 Oturum (session)
+app.use(express.static(path.join(__dirname, "pages"))); // varsa görseller vs.
 app.use(
   session({
-    secret: "blog_secret_key",
+    secret: "supersecretkey", // dilersen ENV’ye taşıyabilirsin
     resave: false,
-    saveUninitialized: false,
+    saveUninitialized: true,
   })
 );
 
-let pool;
-(async () => {
-  pool = await connectDB();
-})();
-
-// 🌈 Stil + Tema geçişi + Animasyonlar
-const baseStyle = `
-  <style>
-    :root {
-      --bg-dark: #0d0d0d;
-      --card-bg-dark: #1a1a1a;
-      --text-light: #f5f5f5;
-      --text-gray: #bbb;
-      --accent: #00bfff;
-      --danger: #ff4d4d;
-      --bg-light: #fafafa;
-      --card-bg-light: #ffffff;
-      --text-dark: #222;
-      --text-muted: #555;
-    }
-
-    * { box-sizing: border-box; transition: all 0.3s ease; }
-
-    body {
-      background-color: var(--bg-dark);
-      color: var(--text-light);
-      font-family: 'Poppins','Segoe UI',sans-serif;
-      margin: 0; padding-top: 70px;
-      min-height: 100vh;
-      display: flex; flex-direction: column;
-      opacity: 0; animation: fadeIn 1s ease forwards;
-    }
-    body.light { background-color: var(--bg-light); color: var(--text-dark); }
-
-    nav {
-      position: fixed; top: 0; left: 0; width: 100%; height: 70px;
-      background-color: var(--card-bg-dark);
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 0 30px; border-bottom: 1px solid #222; z-index: 1000;
-    }
-    body.light nav { background-color: var(--card-bg-light); border-bottom: 1px solid #ddd; }
-    nav .logo { font-weight: 700; color: var(--accent); font-size: 1.3rem; }
-    nav .links a { color: var(--text-gray); margin-left: 20px; text-decoration: none; }
-    nav .links a:hover { color: var(--accent); transform: scale(1.1); }
-    .theme-toggle { cursor: pointer; font-size: 1.4rem; margin-left: 20px; }
-
-    main { width:95%; max-width:950px; margin:20px auto; flex:1; text-align:center; }
-
-    @keyframes fadeIn { from{opacity:0} to{opacity:1} }
-
-    .hero {
-      position:relative; height:60vh; background:url('/banner.jpg') center/cover no-repeat;
-      display:flex; align-items:center; justify-content:center; color:white;
-    }
-    .hero::after { content:""; position:absolute; inset:0; background:rgba(0,0,0,0.6); }
-    .hero-content { position:relative; z-index:2; }
-    .hero h1 { color:var(--accent); font-size:2.6rem; }
-
-    .about {
-      background-color:var(--card-bg-dark); border-radius:12px;
-      padding:30px; margin:30px auto;
-    }
-    .about img { width:120px; height:120px; border-radius:50%; border:3px solid var(--accent); }
-
-    .card {
-      background-color:var(--card-bg-dark); border-radius:12px; padding:25px; margin-bottom:25px;
-      text-align:left;
-    }
-    body.light .card { background-color:var(--card-bg-light); }
-
-    .card .title { font-size:1.5rem; color:var(--accent); margin-bottom:10px; }
-    .card .content { line-height:1.6; margin-bottom:15px; }
-
-    footer {
-      background-color:var(--card-bg-dark);
-      color:var(--text-gray); text-align:center;
-      padding:15px; border-top:1px solid #333;
-    }
-    .contact { display:flex; flex-wrap:wrap; justify-content:center; gap:12px; margin-top:6px; font-size:0.9rem; }
-    footer a { color:var(--accent); text-decoration:none; }
-
-    .login-container {
-      max-width:400px; margin:150px auto; background:rgba(255,255,255,0.05);
-      padding:40px; border-radius:12px; text-align:center; backdrop-filter:blur(10px);
-    }
-    body.light .login-container { background:rgba(255,255,255,0.9); color:#111; }
-    input { width:100%; padding:12px; margin-bottom:15px; border:none; border-radius:6px; }
-    button { background:var(--accent); color:white; border:none; padding:12px; width:100%; border-radius:6px; cursor:pointer; font-weight:600; }
-    button:hover { background:#1e90ff; }
-  </style>
-
-  <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      const theme = localStorage.getItem("theme") || "dark";
-      if (theme === "light") document.body.classList.add("light");
-
-      const toggle = document.querySelector(".theme-toggle");
-      if (toggle) {
-        toggle.textContent = document.body.classList.contains("light") ? "🌙" : "☀️";
-        toggle.addEventListener("click", () => {
-          document.body.classList.toggle("light");
-          const mode = document.body.classList.contains("light") ? "light" : "dark";
-          localStorage.setItem("theme", mode);
-          toggle.textContent = mode === "light" ? "🌙" : "☀️";
-        });
-      }
-    });
-  </script>
-`;
-
-function footerSection() {
-  return `
-    <footer>
-      © 2025 Emirhan's Blog
-      <div class="contact">
-        <span>📞 0533 218 08 17</span>
-        <span>📧 <a href="mailto:emirhanmezarci34@gmail.com">emirhanmezarci34@gmail.com</a></span>
-        <span>💻 <a href="https://github.com/333mirrr" target="_blank">github.com/333mirrr</a></span>
-        <span>🎓 Nişantaşı Üniversitesi — Bilgisayar Programcılığı</span>
-      </div>
-    </footer>
-  `;
+// Giriş kontrol
+function requireLogin(req, res, next) {
+  if (req.session.loggedIn) return next();
+  res.redirect("/login");
 }
 
-// 🏠 Ana Sayfa
-app.get("/", (req, res) => {
-  res.send(`
-  <html><head>${baseStyle}<title>Emirhan'ın Blogu</title></head>
-  <body>
-    <nav><div class="logo">Emirhan's Blog</div>
-    <div class="links">
-      <a href="/">Ana Sayfa</a>
-      <a href="/posts">Yazılar</a>
-      ${req.session.loggedIn ? '<a href="/add-post">Yeni Yazı</a><a href="/logout">Çıkış</a>' : '<a href="/login">Giriş</a>'}
-      <span class="theme-toggle">☀️</span>
-    </div></nav>
-    <main>
-      <section class="hero"><div class="hero-content">
-        <h1>🖋️ Düşüncelerini Kodla.</h1>
-        <p>Yazılım, teknoloji ve kişisel gelişim üzerine paylaşımlar.</p>
-        <a href="/posts" style="background:var(--accent);color:white;padding:12px 25px;border-radius:6px;text-decoration:none;">Yazılara Göz At</a>
-      </div></section>
-      <section class="about"><img src="/profile.jpg"><h2>Merhaba, Ben Emirhan Mezarcı 👋</h2>
-      <p>Yazılım geliştiricisiyim. Bu blogda teknoloji, kodlama ve web geliştirme üzerine yazılar paylaşıyorum.</p></section>
-    </main>${footerSection()}
-  </body></html>
-  `);
-});
+// ---------------------
+// Tema (CSS + küçük JS)
+// ---------------------
+const themeCSS = `
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --text:#f0f6fc; --muted:#8b949e; --primary:#58a6ff; --danger:#f85149; }
+  body { background:var(--bg); color:var(--text); font-family: Arial, Helvetica, sans-serif; margin:0; padding:0; transition:background .5s,color .5s; }
+  header { background:#111; color:#fff; padding:16px; display:flex; align-items:center; justify-content:space-between; }
+  header h1, header h2 { margin:0; font-size:20px; }
+  .container { max-width:900px; margin:24px auto; padding:20px; background:var(--card); border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,.35); }
+  a { color:var(--primary); text-decoration:none; }
+  .btn { background:var(--primary); color:#fff; border:none; padding:10px 14px; border-radius:8px; cursor:pointer; }
+  .btn-outline { background:transparent; border:1px solid var(--primary); color:var(--primary); }
+  .btn-danger { background:var(--danger); }
+  input, textarea { width:100%; background:#0b1220; color:#fff; border:1px solid #263045; padding:10px; border-radius:8px; margin:6px 0 12px; }
+  .post { background:#0f1625; border:1px solid #263045; border-radius:10px; padding:14px; margin:14px 0; }
+  .muted { color:var(--muted); font-size:12px; }
+  footer { text-align:center; color:var(--muted); padding:16px; }
+  .light { --bg:#f7f8fb; --card:#ffffff; --text:#0a0a0a; --muted:#5a5f6a; --primary:#1f6feb; --danger:#d21f1f; }
+  @keyframes fadeIn { from {opacity:.0; transform:translateY(6px);} to {opacity:1; transform:none;} }
+  .fade { animation:fadeIn .35s ease; }
+</style>
+<script>
+  function toggleTheme(){
+    document.body.classList.toggle('light');
+    localStorage.setItem('theme', document.body.classList.contains('light') ? 'light' : 'dark');
+  }
+  window.addEventListener('load', () => {
+    if(localStorage.getItem('theme') === 'light') document.body.classList.add('light');
+  });
+</script>
+`;
 
-// 🔐 Login
+// ---------------------
+// Auth Routes
+// ---------------------
 app.get("/login", (req, res) => {
-  if (req.session.loggedIn) return res.redirect("/add-post");
   res.send(`
-  <html><head>${baseStyle}<title>Giriş Yap</title></head><body>
-  <div class="login-container">
-    <h2>🔐 Yönetici Girişi</h2>
-    <form method="POST" action="/login">
-      <input type="text" name="username" placeholder="Kullanıcı Adı" required>
-      <input type="password" name="password" placeholder="Şifre" required>
-      <button type="submit">Giriş Yap</button>
-    </form>
-  </div></body></html>
+  <html><head><meta charset="utf-8"><title>Yönetici Girişi</title>${themeCSS}</head>
+  <body class="fade">
+    <header>
+      <h2>Emirhan'ın Bloğu</h2>
+      <button class="btn btn-outline" onclick="toggleTheme()">🌗 Tema</button>
+    </header>
+    <div class="container">
+      <h3>Yönetici Girişi</h3>
+      <form method="POST" action="/login">
+        <label>Kullanıcı Adı</label>
+        <input name="username" required>
+        <label>Şifre</label>
+        <input type="password" name="password" required>
+        <button class="btn" type="submit">Giriş Yap</button>
+      </form>
+      <p class="muted">Kullanıcı: <b>sa</b> — Şifre: <b>Emirhan.</b></p>
+    </div>
+    <footer>© 2025 Emirhan Mezarcı | Nişantaşı Üniversitesi Bilgisayar Programcılığı</footer>
+  </body></html>
   `);
 });
 
@@ -189,84 +128,154 @@ app.post("/login", (req, res) => {
   const { username, password } = req.body;
   if (username === "sa" && password === "Emirhan.") {
     req.session.loggedIn = true;
-    res.redirect("/add-post");
+    res.redirect("/");
   } else {
-    res.send("<h2 style='text-align:center;margin-top:100px;color:red;'>❌ Hatalı kullanıcı adı veya şifre!</h2>");
+    res.send(`
+      <html><head><meta charset="utf-8"><title>Hatalı Giriş</title>${themeCSS}</head>
+      <body class="fade">
+        <header><h2>Hata</h2><button class="btn btn-outline" onclick="toggleTheme()">🌗 Tema</button></header>
+        <div class="container"><p>❌ Hatalı kullanıcı adı veya şifre.</p><a class="btn btn-outline" href="/login">Tekrar Dene</a></div>
+      </body></html>
+    `);
   }
 });
 
 app.get("/logout", (req, res) => {
-  req.session.destroy(() => res.redirect("/"));
+  req.session.destroy(() => res.redirect("/login"));
 });
 
-// ✍️ Yeni Yazı (korumalı)
-app.get("/add-post", (req, res) => {
-  if (!req.session.loggedIn)
-    return res.send("<h2 style='text-align:center;margin-top:100px;color:red;'>🚫 Yetkiniz yok. <a href='/login'>Giriş yap</a>.</h2>");
+// ---------------------
+// Pages
+// ---------------------
+app.get("/", requireLogin, (req, res) => {
   res.send(`
-  <html><head>${baseStyle}<title>Yeni Yazı</title></head><body>
-  <nav><div class="logo">Emirhan's Blog</div>
-  <div class="links"><a href="/">Ana Sayfa</a><a href="/posts">Yazılar</a><a href="/logout">Çıkış</a><span class="theme-toggle">☀️</span></div></nav>
-  <main style="margin-top:100px;">
-  <h1>📝 Yeni Blog Yazısı Ekle</h1>
-  <form action="/add-post" method="post" style="max-width:600px;margin:auto;">
-    <input name="Title" placeholder="Başlık" required>
-    <textarea name="Content" placeholder="İçerik" rows="6" required></textarea>
-    <input name="Author" placeholder="Yazar" required>
-    <button type="submit">✨ Kaydet</button>
-  </form></main>${footerSection()}</body></html>
+  <html><head><meta charset="utf-8"><title>Ana Sayfa</title>${themeCSS}</head>
+  <body class="fade">
+    <header>
+      <h1>Emirhan'ın Bloğu</h1>
+      <div>
+        <button class="btn btn-outline" onclick="toggleTheme()">🌗 Tema</button>
+        <a href="/logout" class="btn" style="margin-left:8px;">Çıkış Yap</a>
+      </div>
+    </header>
+    <div class="container">
+      <p>Hoş geldin Emirhan 👋</p>
+      <p>
+        <a class="btn" href="/posts">📜 Yazıları Gör</a>
+        <a class="btn btn-outline" style="margin-left:8px;" href="/add-post">📝 Yeni Yazı Ekle</a>
+      </p>
+    </div>
+    <footer>
+      GitHub: <a href="https://github.com/333mirrr">333mirrr</a> •
+      📧 emirhanmezarci34@gmail.com •
+      📱 05332180817 •
+      🎓 Nişantaşı Üniversitesi Bilgisayar Programcılığı
+    </footer>
+  </body></html>
   `);
 });
 
-app.post("/add-post", async (req, res) => {
-  if (!req.session.loggedIn) return res.status(403).send("Yetkiniz yok.");
+app.get("/posts", requireLogin, async (req, res) => {
   try {
-    const { Title, Content, Author } = req.body;
-    await pool.request()
-      .input("Title", sql.NVarChar, Title)
-      .input("Content", sql.NVarChar, Content)
-      .input("Author", sql.NVarChar, Author)
-      .query("INSERT INTO Posts (Title,Content,Author) VALUES (@Title,@Content,@Author)");
-    res.redirect("/posts");
-  } catch (err) {
-    res.status(500).send("Sunucu hatası: " + err.message);
-  }
-});
-
-// 📜 Yazı Listesi
-app.get("/posts", async (req, res) => {
-  try {
-    const result = await pool.request().query("SELECT * FROM Posts ORDER BY CreatedAt DESC");
-    let html = `<html><head>${baseStyle}<title>Yazılar</title></head><body>
-    <nav><div class="logo">Emirhan's Blog</div>
-    <div class="links"><a href="/">Ana Sayfa</a>${req.session.loggedIn ? '<a href="/add-post">Yeni Yazı</a><a href="/logout">Çıkış</a>' : '<a href="/login">Giriş</a>'}<span class="theme-toggle">☀️</span></div></nav>
-    <main><h2 style="color:var(--accent);">📚 Tüm Yazılar</h2>`;
-    if (result.recordset.length === 0) html += "<p>Henüz yazı yok.</p>";
-    else result.recordset.forEach(p => {
-      const c = new Date(p.CreatedAt).toLocaleString("tr-TR");
-      html += `<div class="card"><div class="title">${p.Title}</div>
-      <div class="content">${p.Content.substring(0,200)}...</div>
-      <div class="meta">✍️ ${p.Author} | 🕒 ${c}</div>
-      ${req.session.loggedIn ? `<a href="/delete/${p.Id}" style="color:red;text-decoration:none;">🗑️ Sil</a>` : ""}
-      </div>`;
-    });
-    html += `</main>${footerSection()}</body></html>`;
+    const result = await pool.query("SELECT * FROM posts ORDER BY id DESC");
+    let html = `
+    <html><head><meta charset="utf-8"><title>Yazılar</title>${themeCSS}</head>
+    <body class="fade">
+      <header>
+        <h2>Tüm Yazılar</h2>
+        <div>
+          <button class="btn btn-outline" onclick="toggleTheme()">🌗 Tema</button>
+          <a class="btn" style="margin-left:8px;" href="/add-post">Yeni Yazı</a>
+          <a class="btn btn-outline" style="margin-left:8px;" href="/">Ana Sayfa</a>
+        </div>
+      </header>
+      <div class="container">
+    `;
+    if (result.rows.length === 0) {
+      html += `<p class="muted">Henüz yazı yok. “Yeni Yazı” ile başlayabilirsin.</p>`;
+    } else {
+      for (const p of result.rows) {
+        html += `
+          <div class="post">
+            <h3>${p.baslik}</h3>
+            <p>${p.icerik}</p>
+            <p class="muted">Yazar: ${p.yazar} • Tarih: ${new Date(p.tarih).toLocaleString()}</p>
+            <form method="POST" action="/delete-post/${p.id}">
+              <button class="btn btn-danger" type="submit">Sil</button>
+            </form>
+          </div>
+        `;
+      }
+    }
+    html += `</div><footer>© Emirhan Mezarcı</footer></body></html>`;
     res.send(html);
   } catch (err) {
-    res.status(500).send("Sunucu hatası: " + err.message);
+    console.error("GET /posts hata:", err);
+    res.status(500).send("⚠️ Yazılar alınamadı: " + err.message);
   }
 });
 
-// 🗑️ Yazı Sil (korumalı)
-app.get("/delete/:id", async (req, res) => {
-  if (!req.session.loggedIn) return res.status(403).send("Yetkiniz yok.");
+app.get("/add-post", requireLogin, (req, res) => {
+  res.send(`
+  <html><head><meta charset="utf-8"><title>Yeni Yazı</title>${themeCSS}</head>
+  <body class="fade">
+    <header><h2>Yeni Yazı Ekle</h2><button class="btn btn-outline" onclick="toggleTheme()">🌗 Tema</button></header>
+    <div class="container">
+      <form method="POST" action="/add-post">
+        <label>Başlık</label>
+        <input name="baslik" required>
+        <label>İçerik</label>
+        <textarea name="icerik" rows="6" required></textarea>
+        <input type="hidden" name="yazar" value="Emirhan">
+        <button class="btn" type="submit">Kaydet</button>
+        <a class="btn btn-outline" style="margin-left:8px;" href="/posts">Geri</a>
+      </form>
+    </div>
+  </body></html>
+  `);
+});
+
+app.post("/add-post", requireLogin, async (req, res) => {
+  const { baslik, icerik, yazar } = req.body;
   try {
-    const id = parseInt(req.params.id);
-    await pool.request().input("Id", sql.Int, id).query("DELETE FROM Posts WHERE Id=@Id");
+    await pool.query(
+      "INSERT INTO posts (baslik, icerik, yazar, tarih) VALUES ($1,$2,$3,NOW())",
+      [baslik, icerik, yazar]
+    );
     res.redirect("/posts");
   } catch (err) {
-    res.status(500).send("Sunucu hatası: " + err.message);
+    console.error("POST /add-post hata:", err);
+    res.status(500).send("⚠️ Yazı eklenemedi: " + err.message);
   }
 });
 
-app.listen(port, () => console.log(`✅ Server http://localhost:${port} üzerinde çalışıyor`));
+app.post("/delete-post/:id", requireLogin, async (req, res) => {
+  try {
+    await pool.query("DELETE FROM posts WHERE id=$1", [req.params.id]);
+    res.redirect("/posts");
+  } catch (err) {
+    console.error("POST /delete-post hata:", err);
+    res.status(500).send("⚠️ Silinemedi: " + err.message);
+  }
+});
+
+// ---------------------
+// 404 → login (girişsiz) / ana sayfa (girişliyse)
+// ---------------------
+app.use((req, res) => {
+  if (req.session?.loggedIn) return res.redirect("/");
+  res.redirect("/login");
+});
+
+// ---------------------
+// Start
+// ---------------------
+initDB()
+  .then(() => {
+    app.listen(PORT, () => console.log(`🚀 Server ${PORT} portunda çalışıyor`));
+  })
+  .catch((e) => {
+    console.error("❌ DB init hata:", e);
+    // yine de server’ı ayağa kaldır, logs’tan bakarız
+    app.listen(PORT, () => console.log(`🚀 Server ${PORT} portunda (DB init hatasıyla) başladı`));
+  });
