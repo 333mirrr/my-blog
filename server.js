@@ -6,13 +6,17 @@ import { fileURLToPath } from "url";
 import session from "express-session";
 
 dotenv.config();
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // 🌐 PostgreSQL bağlantısı
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: {
+    require: true,
+    rejectUnauthorized: false,
+  },
 });
 
 pool.connect()
@@ -33,7 +37,13 @@ app.use(
   })
 );
 
-// 💫 Tema & CSS
+// 🔒 Giriş kontrol middleware
+function requireLogin(req, res, next) {
+  if (req.session.loggedIn) return next();
+  res.redirect("/login");
+}
+
+// 🌈 Tema ve animasyonlar
 const themeCSS = `
 <style>
   body { background: var(--bg); color: var(--text); font-family: Arial; transition: background 0.6s, color 0.6s; margin:0; padding:0;}
@@ -59,64 +69,21 @@ const themeCSS = `
 </script>
 `;
 
-// 🧠 Giriş kontrolü
-function requireLogin(req, res, next) {
-  if (req.session.loggedIn) return next();
-  res.redirect("/login");
-}
-
-// 🏠 ANA SAYFA (herkese açık)
-app.get("/", async (req, res) => {
-  try {
-    const result = await pool.query("SELECT * FROM posts ORDER BY id DESC");
-    let postsHTML = "";
-    result.rows.forEach(p => {
-      postsHTML += `
-        <div class="post fade">
-          <h3>${p.baslik}</h3>
-          <p>${p.icerik}</p>
-          <small>✍️ ${p.yazar} | 📅 ${new Date(p.tarih).toLocaleDateString()}</small>
-        </div>`;
-    });
-
-    res.send(`
-      <html><head><title>Emirhan'ın Bloğu</title>${themeCSS}</head>
-      <body class="fade">
-        <header>
-          <h2>Emirhan'ın Bloğu</h2>
-          <div>
-            <button onclick="toggleTheme()">🌗 Tema</button>
-            <a href="/login"><button>Yönetici Girişi</button></a>
-          </div>
-        </header>
-        <div class="container">
-          <h3>Hoş Geldin 👋</h3>
-          <p>Son eklenen yazılar aşağıda:</p>
-          ${postsHTML || "<p>Henüz yazı eklenmemiş.</p>"}
-        </div>
-        <footer>© 2025 Emirhan Mezarcı | Nişantaşı Üniversitesi Bilgisayar Programcılığı</footer>
-      </body></html>
-    `);
-  } catch (err) {
-    res.status(500).send("Sunucu hatası: " + err.message);
-  }
-});
-
-// 🔐 GİRİŞ SAYFASI
+// 🔐 Giriş sayfası
 app.get("/login", (req, res) => {
   res.send(`
     <html><head><title>Yönetici Girişi</title>${themeCSS}</head>
     <body class="fade">
-      <header><h2>Yönetici Girişi</h2></header>
+      <header><h2>Emirhan'ın Bloğu</h2><button onclick="toggleTheme()">🌗 Tema</button></header>
       <div class="container">
+        <h3>Yönetici Girişi</h3>
         <form method="POST" action="/login">
-          <label>Kullanıcı Adı:</label><br>
-          <input type="text" name="username" required><br><br>
-          <label>Şifre:</label><br>
-          <input type="password" name="password" required><br><br>
+          <label>Kullanıcı Adı:</label><br><input type="text" name="username" required><br><br>
+          <label>Şifre:</label><br><input type="password" name="password" required><br><br>
           <button type="submit">Giriş Yap</button>
         </form>
       </div>
+      <footer>© 2025 Emirhan Mezarcı | Tüm Hakları Saklıdır</footer>
     </body></html>
   `);
 });
@@ -125,55 +92,76 @@ app.post("/login", (req, res) => {
   const { username, password } = req.body;
   if (username === "sa" && password === "Emirhan.") {
     req.session.loggedIn = true;
-    res.redirect("/admin");
+    res.redirect("/");
   } else {
     res.send("<p>❌ Hatalı giriş!</p><a href='/login'>Tekrar Dene</a>");
   }
 });
 
 app.get("/logout", (req, res) => {
-  req.session.destroy(() => res.redirect("/"));
+  req.session.destroy(() => res.redirect("/login"));
 });
 
-// 🧑‍💼 YÖNETİCİ PANELİ (sadece giriş yapanlar)
-app.get("/admin", requireLogin, async (req, res) => {
-  const result = await pool.query("SELECT * FROM posts ORDER BY id DESC");
-  let html = `
-    <html><head><title>Yönetim Paneli</title>${themeCSS}</head>
+// 🏠 Ana Sayfa
+app.get("/", requireLogin, (req, res) => {
+  res.send(`
+    <html><head><title>Emirhan'ın Bloğu</title>${themeCSS}</head>
     <body class="fade">
       <header>
-        <h2>Yönetim Paneli</h2>
+        <h2>Emirhan'ın Bloğu</h2>
         <div>
           <button onclick="toggleTheme()">🌗 Tema</button>
           <a href="/logout"><button>Çıkış Yap</button></a>
         </div>
       </header>
       <div class="container">
-        <a href="/add-post">➕ Yeni Yazı Ekle</a> | <a href="/">🏠 Ana Sayfa</a><hr>
-  `;
-
-  result.rows.forEach((p) => {
-    html += `
-      <div class="post fade">
-        <h3>${p.baslik}</h3>
-        <p>${p.icerik}</p>
-        <small>Yazar: ${p.yazar}</small>
-        <form method="POST" action="/delete-post/${p.id}">
-          <button style="background:red;margin-top:8px;">Sil</button>
-        </form>
-      </div>`;
-  });
-
-  html += "</div><footer>© Emirhan Mezarcı</footer></body></html>";
-  res.send(html);
+        <h3>Hoş geldin Emirhan 👋</h3>
+        <p><a href="/posts">📜 Yazıları Gör</a> | <a href="/add-post">📝 Yeni Yazı Ekle</a></p>
+      </div>
+      <footer>
+        GitHub: <a href="https://github.com/333mirrr">333mirrr</a> |
+        © 2025 Emirhan Mezarcı | Nişantaşı Üniversitesi Bilgisayar Programcılığı
+      </footer>
+    </body></html>
+  `);
 });
 
-// ✏️ YENİ YAZI EKLE
+// 📜 Yazılar Sayfası
+app.get("/posts", requireLogin, async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM posts ORDER BY id DESC");
+    let html = `
+      <html><head><title>Yazılar</title>${themeCSS}</head>
+      <body class="fade">
+        <header><h2>Yazılar</h2><button onclick="toggleTheme()">🌗 Tema</button></header>
+        <div class="container">
+          <a href="/add-post">Yeni Yazı Ekle</a> | <a href="/">Ana Sayfa</a><hr>
+    `;
+    result.rows.forEach((p) => {
+      html += `
+        <div class="post">
+          <h3>${p.baslik}</h3>
+          <p>${p.icerik}</p>
+          <small>Yazar: ${p.yazar} | Tarih: ${new Date(p.tarih).toLocaleDateString()}</small><br>
+          <form method="POST" action="/delete-post/${p.id}">
+            <button style="background:red;margin-top:8px;">Sil</button>
+          </form>
+        </div>`;
+    });
+    html += "</div><footer>© Emirhan Mezarcı</footer></body></html>";
+    res.send(html);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Sunucu hatası: " + err.message);
+  }
+});
+
+// ➕ Yeni Yazı Sayfası
 app.get("/add-post", requireLogin, (req, res) => {
   res.send(`
     <html><head><title>Yeni Yazı</title>${themeCSS}</head>
     <body class="fade">
-      <header><h2>Yeni Yazı Ekle</h2></header>
+      <header><h2>Yeni Yazı Ekle</h2><button onclick="toggleTheme()">🌗 Tema</button></header>
       <div class="container">
         <form method="POST" action="/add-post">
           <label>Başlık:</label><br><input type="text" name="baslik" required><br><br>
@@ -181,35 +169,35 @@ app.get("/add-post", requireLogin, (req, res) => {
           <input type="hidden" name="yazar" value="Emirhan">
           <button type="submit">Kaydet</button>
         </form>
-        <br><a href="/admin">Geri Dön</a>
+        <br><a href="/posts">Geri Dön</a>
       </div>
+      <footer>© Emirhan Mezarcı</footer>
     </body></html>
   `);
 });
 
+// ✏️ Yazı Ekleme
 app.post("/add-post", requireLogin, async (req, res) => {
   const { baslik, icerik, yazar } = req.body;
   try {
-    await pool.query(
-      "INSERT INTO posts (baslik, icerik, yazar, tarih) VALUES ($1, $2, $3, NOW())",
-      [baslik, icerik, yazar]
-    );
-    res.redirect("/admin");
+    await pool.query("INSERT INTO posts (baslik, icerik, yazar, tarih) VALUES ($1,$2,$3,NOW())", [baslik, icerik, yazar]);
+    res.redirect("/posts");
   } catch (err) {
+    console.error(err);
     res.status(500).send("Sunucu hatası: " + err.message);
   }
 });
 
-// 🗑️ Yazı silme
+// 🗑️ Yazı Silme
 app.post("/delete-post/:id", requireLogin, async (req, res) => {
   const { id } = req.params;
   try {
     await pool.query("DELETE FROM posts WHERE id=$1", [id]);
-    res.redirect("/admin");
+    res.redirect("/posts");
   } catch (err) {
     res.status(500).send("Silme hatası: " + err.message);
   }
 });
 
-// 🚀 Server başlat
+// 🚀 Server Başlat
 app.listen(PORT, () => console.log(`🚀 Server ${PORT} portunda çalışıyor`));
