@@ -239,6 +239,61 @@ app.post("/delete-post/:id", requireLogin, async (req, res) => {
     res.status(500).send("Silme hatası.");
   }
 });
+// 📰 Yazıları Gör (herkese açık)
+app.get("/posts", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM posts ORDER BY id DESC");
+
+    let html = `
+      <html><head><title>Tüm Yazılar</title>${themeCSS}</head>
+      <body>
+        <header>
+          <h2>Emirhan'ın Bloğu</h2>
+          <div>
+            <button onclick="toggleTheme()">🌗 Tema</button>
+            <a href="/"><button>Ana Sayfa</button></a>
+            ${
+              req.session.loggedIn
+                ? `<a href="/logout"><button>Çıkış</button></a>`
+                : `<a href="/login"><button>Giriş</button></a>`
+            }
+          </div>
+        </header>
+
+        <div class="container">
+          <h2>📖 Tüm Yazılar</h2>
+    `;
+
+    if (result.rows.length === 0) {
+      html += "<p>Henüz yazı eklenmemiş.</p>";
+    } else {
+      result.rows.forEach(post => {
+        html += `
+          <div class="post">
+            <h3>${post.baslik}</h3>
+            <p>${post.icerik}</p>
+            <small>✍️ ${post.yazar} • ${new Date(post.tarih).toLocaleDateString()}</small>
+          </div>
+        `;
+      });
+    }
+
+    html += `
+        </div>
+        <footer>
+          <p>📧 emirhanmezarci34@gmail.com | 📱 0533 218 08 17</p>
+          <p>🎓 Nişantaşı Üniversitesi - Bilgisayar Programcılığı</p>
+          <p>GitHub: <a href="https://github.com/333mirrr">333mirrr</a></p>
+        </footer>
+      </body></html>
+    `;
+
+    res.send(html);
+  } catch (err) {
+    console.error("Yazıları Gör sayfası hatası:", err);
+    res.status(500).send("Sunucu hatası.");
+  }
+});
 
 // 🚀 Başlat
 app.listen(PORT, () => console.log(`🚀 Server ${PORT} portunda çalışıyor`));
