@@ -95,8 +95,7 @@ app.get("/", async (req, res) => {
         <header>
           <h2>Emirhan'ın Bloğu</h2>
           <div>
-          <button onclick="toggleTheme()">🌗 Tema</button>
-
+            <button onclick="toggleTheme()">🌗 Tema</button>
             ${req.session.loggedIn
               ? `<a href='/logout'><button>Çıkış</button></a>`
               : `<a href='/login'><button>Giriş</button></a>`}
@@ -104,11 +103,11 @@ app.get("/", async (req, res) => {
         </header>
         <div class="banner">Hoş Geldin! Ben Emirhan Mezarcı 👋</div>
         <div class="container">
+          <div style="margin-bottom:20px;">
+            <a href="/posts"><button>📜 Yazıları Gör</button></a>
+            ${req.session.loggedIn ? `<a href="/add-post"><button>📝 Yazı Ekle</button></a>` : ""}
+          </div>
           <h3>📚 Son Yazılar</h3>
-          <p style="margin-top:12px">
-  <a href="/posts"><button>📜 Yazıları Gör</button></a>
-</p>
-
     `;
 
     if (result.rows.length === 0) {
@@ -120,6 +119,13 @@ app.get("/", async (req, res) => {
             <h3>${post.baslik}</h3>
             <p>${post.icerik}</p>
             <small>✍️ ${post.yazar} • ${new Date(post.tarih).toLocaleDateString()}</small>
+            ${
+              req.session.loggedIn
+                ? `<form method="POST" action="/delete-post/${post.id}" style="margin-top:10px;">
+                    <button style="background:red;">🗑️ Sil</button>
+                   </form>`
+                : ""
+            }
           </div>`;
       });
     }
@@ -181,7 +187,8 @@ app.get("/admin", requireLogin, (req, res) => {
     <body>
       <header><h2>Yönetici Paneli</h2></header>
       <div class="container">
-        <p><a href="/add-post"><button>📝 Yeni Yazı Ekle</button></a> <a href="/"><button>Ana Sayfa</button></a></p>
+        <p><a href="/add-post"><button>📝 Yeni Yazı Ekle</button></a> 
+        <a href="/"><button>Ana Sayfa</button></a></p>
       </div>
     </body></html>
   `);
@@ -218,6 +225,18 @@ app.post("/add-post", requireLogin, async (req, res) => {
   } catch (err) {
     console.error("Yazı ekleme hatası:", err);
     res.status(500).send("Sunucu hatası.");
+  }
+});
+
+// 🗑️ Yazı silme
+app.post("/delete-post/:id", requireLogin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query("DELETE FROM posts WHERE id=$1", [id]);
+    res.redirect("/");
+  } catch (err) {
+    console.error("Silme hatası:", err);
+    res.status(500).send("Silme hatası.");
   }
 });
 
