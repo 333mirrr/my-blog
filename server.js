@@ -41,7 +41,26 @@ function requireLogin(req, res, next) {
 // 🎨 Ortak stil
 const themeCSS = `
 <style>
-  body { background:#0d1117; color:#f0f6fc; font-family: Arial; transition:0.6s; margin:0; padding:0; }
+  :root {
+    --bg-dark: #0d1117;
+    --text-dark: #f0f6fc;
+    --bg-light: #f9f9f9;
+    --text-light: #222;
+  }
+
+  body {
+    background: var(--bg-dark);
+    color: var(--text-dark);
+    font-family: Arial;
+    margin: 0; padding: 0;
+    transition: background 0.6s, color 0.6s;
+  }
+
+  body.light {
+    background: var(--bg-light);
+    color: var(--text-light);
+  }
+
   header { background:#111; color:white; padding:15px; display:flex; justify-content:space-between; align-items:center; }
   button { background:#58a6ff; border:none; padding:8px 15px; border-radius:6px; color:white; cursor:pointer; }
   a { color:#58a6ff; text-decoration:none; }
@@ -50,7 +69,21 @@ const themeCSS = `
   footer { background:#111; color:white; text-align:center; padding:15px; margin-top:20px; font-size:13px; }
   .banner { width:100%; height:300px; background:url('/banner.jpg') center/cover; display:flex; justify-content:center; align-items:center; color:white; font-size:28px; font-weight:bold; }
 </style>
+
+<script>
+  function toggleTheme(){
+    document.body.classList.toggle('light');
+    localStorage.setItem('theme', document.body.classList.contains('light') ? 'light' : 'dark');
+  }
+
+  window.onload = () => {
+    if(localStorage.getItem('theme') === 'light') {
+      document.body.classList.add('light');
+    }
+  }
+</script>
 `;
+
 
 // 🏠 Ana Sayfa (herkese açık)
 app.get("/", async (req, res) => {
@@ -62,6 +95,8 @@ app.get("/", async (req, res) => {
         <header>
           <h2>Emirhan'ın Bloğu</h2>
           <div>
+          <button onclick="toggleTheme()">🌗 Tema</button>
+
             ${req.session.loggedIn
               ? `<a href='/logout'><button>Çıkış</button></a>`
               : `<a href='/login'><button>Giriş</button></a>`}
