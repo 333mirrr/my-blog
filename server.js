@@ -105,6 +105,10 @@ app.get("/", async (req, res) => {
         <div class="banner">Hoş Geldin! Ben Emirhan Mezarcı 👋</div>
         <div class="container">
           <h3>📚 Son Yazılar</h3>
+          <p style="margin-top:12px">
+  <a href="/posts"><button>📜 Yazıları Gör</button></a>
+</p>
+
     `;
 
     if (result.rows.length === 0) {
