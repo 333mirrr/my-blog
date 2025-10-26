@@ -51,7 +51,7 @@ const themeCSS = `
   body {
     background: var(--bg-dark);
     color: var(--text-dark);
-    font-family: Arial;
+    font-family: Arial, sans-serif;
     margin: 0; padding: 0;
     transition: background 0.6s, color 0.6s;
   }
@@ -61,13 +61,102 @@ const themeCSS = `
     color: var(--text-light);
   }
 
-  header { background:#111; color:white; padding:15px; display:flex; justify-content:space-between; align-items:center; }
-  button { background:#58a6ff; border:none; padding:8px 15px; border-radius:6px; color:white; cursor:pointer; }
+  header {
+    background:#111;
+    color:white;
+    padding:15px 25px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    flex-wrap: wrap;
+  }
+
+  h2 { font-size: 1.5rem; margin: 5px 0; }
+  button {
+    background:#58a6ff;
+    border:none;
+    padding:8px 15px;
+    border-radius:6px;
+    color:white;
+    cursor:pointer;
+    margin: 3px;
+  }
+
   a { color:#58a6ff; text-decoration:none; }
-  .container { padding:30px; max-width:900px; margin:auto; }
-  .post { border:1px solid #333; border-radius:8px; padding:15px; background:#161b22; margin-bottom:15px; }
-  footer { background:#111; color:white; text-align:center; padding:15px; margin-top:20px; font-size:13px; }
-  .banner { width:100%; height:300px; background:url('/banner.jpg') center/cover; display:flex; justify-content:center; align-items:center; color:white; font-size:28px; font-weight:bold; }
+  .container { padding:25px; max-width:900px; margin:auto; }
+  .post {
+    border:1px solid #333;
+    border-radius:8px;
+    padding:15px;
+    background:#161b22;
+    margin-bottom:15px;
+    word-wrap: break-word;
+  }
+
+  footer {
+    background:#111;
+    color:white;
+    text-align:center;
+    padding:15px;
+    margin-top:20px;
+    font-size:13px;
+    line-height:1.6;
+  }
+
+  .banner {
+    width:100%;
+    height:300px;
+    background:url('/banner.jpg') center/cover;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    color:white;
+    font-size:28px;
+    font-weight:bold;
+    text-align:center;
+  }
+
+  /* 📱 RESPONSIVE TASARIM */
+  @media (max-width: 768px) {
+    header {
+      flex-direction: column;
+      text-align: center;
+    }
+    .container {
+      padding:15px;
+      width:95%;
+    }
+    .banner {
+      height:200px;
+      font-size:22px;
+      padding:0 10px;
+    }
+    .post h3 {
+      font-size:18px;
+    }
+    .post p {
+      font-size:15px;
+    }
+    footer {
+      font-size:12px;
+      padding:10px;
+    }
+    button {
+      width:100%;
+      max-width:300px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .banner {
+      height:150px;
+      font-size:18px;
+    }
+    h2 { font-size: 1.2rem; }
+    .post {
+      padding:10px;
+    }
+  }
 </style>
 
 <script>
@@ -83,6 +172,7 @@ const themeCSS = `
   }
 </script>
 `;
+
 
 
 // 🏠 Ana Sayfa (herkese açık)
